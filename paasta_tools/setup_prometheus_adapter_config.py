@@ -16,6 +16,7 @@ Small utility to update the Prometheus adapter's config to match soaconfigs.
 """
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,11 @@ import ruamel.yaml as yaml
 from mypy_extensions import TypedDict
 
 from paasta_tools.kubernetes_tools import ensure_namespace
+from paasta_tools.kubernetes_tools import get_kubernetes_app_name
 from paasta_tools.kubernetes_tools import KubeClient
+from paasta_tools.kubernetes_tools import sanitise_kubernetes_name
+from paasta_tools.utils import DEFAULT_AUTOSCALING_MOVING_AVERAGE_WINDOW
+from paasta_tools.utils import DEFAULT_AUTOSCALING_SETPOINT
 from paasta_tools.utils import DEFAULT_SOA_DIR
 
 log = logging.getLogger(__name__)
@@ -135,11 +140,39 @@ def create_instance_uwsgi_scaling_rule(
     """
     Creates a Prometheus adapter rule config for a given service instance.
     """
+    setpoint = instance_config["autoscaling"].get(
+        "setpoint", DEFAULT_AUTOSCALING_SETPOINT
+    )
+    moving_average_window = instance_config["autoscaling"].get(
+        "moving_average_window_seconds", DEFAULT_AUTOSCALING_MOVING_AVERAGE_WINDOW
+    )
+    deployment_name = f"{sanitise_kubernetes_name(service)}-{instance}"
+    worker_filter_terms = f"paasta_cluster='{paasta_cluster}',paasta_service='{service}',paasta_instance='{instance}'"
+    replica_filter_terms = (
+        f"paasta_cluster='{paasta_cluster}',deployment='{deployment_name}'"
+    )
+    metrics_query = f"""
+            avg_over_time(
+                (
+                    sum(
+                        avg(
+                            uwsgi_worker_busy{{{worker_filter_terms}}}
+                        ) by (kube_pod, kube_deployment)
+                    ) by (kube_deployment) / {setpoint}
+                )[{moving_average_window}s:]
+            ) / scalar(sum(kube_deployment_spec_replicas{{{replica_filter_terms}}}))
+    """
+    metric_name = (
+        f"{get_kubernetes_app_name(service=service, instance=instance)}-uwsgi-prom"
+    )
+
     return {
-        "name": {"as": ""},
-        "seriesQuery": "",
+        "name": {"as": metric_name},
+        "seriesQuery": f"uwsgi_worker_busy{{{worker_filter_terms}}}",
         "resources": {"template": "kube_<<.Resource>>"},
-        "metricsQuery": "",
+        # our nicely formatted query has enough whitespace that collapsing said
+        # whitespace cuts down the size of the string by a meaningful amount
+        "metricsQuery": re.sub(pattern=r"\s+", repl=" ", string=metrics_query).strip(),
     }
 
 
