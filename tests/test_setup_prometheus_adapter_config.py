@@ -1,10 +1,16 @@
+from pathlib import Path
 from typing import Any
 from typing import Dict
 
 import pytest
+import ruamel.yaml as yaml
+from py._path.local import LocalPath
 
 from paasta_tools.setup_prometheus_adapter_config import (
     create_instance_uwsgi_scaling_rule,
+)
+from paasta_tools.setup_prometheus_adapter_config import (
+    create_prometheus_adapter_config,
 )
 from paasta_tools.setup_prometheus_adapter_config import (
     should_create_uwsgi_scaling_rule,
@@ -78,3 +84,36 @@ def test_create_instance_uwsgi_scaling_rule() -> None:
         str(instance_config["autoscaling"]["moving_average_window_seconds"])
         in rule["metricsQuery"]
     )
+
+
+def test_create_prometheus_adapter_config(tmpdir: LocalPath) -> None:
+    # TODO: if we upgrade to pytest>=3.9, we can use their tmp_path fixture directly
+    tmp_path = Path(str(tmpdir))
+    service_config = {
+        "_shared_env": {"env": {"PAASTA_IS_GREAT": True}},
+        "test_instance": {
+            "autoscaling": {
+                "metrics_provider": "uwsgi",
+                "setpoint": 0.45,
+                "use_prometheus": True,
+            }
+        },
+        "another_test_instance": {
+            "autoscaling": {
+                "metrics_provider": "uwsgi",
+                "setpoint": 0.45,
+                "use_prometheus": True,
+            }
+        },
+    }
+
+    (tmp_path / "test_service").mkdir()
+    (tmp_path / "test_service" / "kubernetes-some-cluster.yaml").write_text(
+        yaml.dump(service_config), encoding="utf-8"
+    )
+
+    config = create_prometheus_adapter_config(
+        paasta_cluster="some-cluster", soa_dir=tmp_path
+    )
+
+    assert len(config["rules"]) == len(service_config.keys()) - 1
