@@ -38,8 +38,10 @@ from paasta_tools.kubernetes_tools import get_kubernetes_app_name
 from paasta_tools.kubernetes_tools import KubeClient
 from paasta_tools.kubernetes_tools import sanitise_kubernetes_name
 from paasta_tools.kubernetes_tools import V1Pod
-from paasta_tools.utils import DEFAULT_AUTOSCALING_MOVING_AVERAGE_WINDOW
-from paasta_tools.utils import DEFAULT_AUTOSCALING_SETPOINT
+from paasta_tools.long_running_service_tools import (
+    DEFAULT_AUTOSCALING_MOVING_AVERAGE_WINDOW,
+)
+from paasta_tools.long_running_service_tools import DEFAULT_AUTOSCALING_SETPOINT
 from paasta_tools.utils import DEFAULT_SOA_DIR
 
 log = logging.getLogger(__name__)
